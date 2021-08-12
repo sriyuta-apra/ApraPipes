@@ -51,7 +51,9 @@ find_library(LIB_AVCODEC libavcodec.a PATHS ${FFMPEG_ROOT}/libavcodec NO_DEFAULT
 find_library(LIB_AVUTIL libavutil.a PATHS ${FFMPEG_ROOT}/libavutil NO_DEFAULT_PATH)
 find_library(LIB_FFSWR libswresample.a PATHS ${FFMPEG_ROOT}/libswresample NO_DEFAULT_PATH)
 find_library(LIB_ZXING libZXing.a PATHS ../thirdparty/zxing-cpp/_install/lib NO_DEFAULT_PATH)
-
+find_library(LIB_DEEPSPEECH libdeepspeech.so PATHS ../thirdparty/DeepSpeech/lib NO_DEFAULT_PATH)
+find_library(LIB_SHM libxcb-shm.so.0.0.0 PATHS ../thirdparty/others NO_DEFAULT_PATH)
+find_library(LIB_ASOUND libasound.so.2.0.0 PATHS ../thirdparty/others NO_DEFAULT_PATH)
 
 IF(ENABLE_CUDA)
 	IF(ENABLE_ARM64)
@@ -106,6 +108,8 @@ include_directories(AFTER SYSTEM include
 	/usr/local/cuda-10.2/include
 	../thirdparty/Video_Codec_SDK_10.0.26/Interface
 	../thirdparty/ffmpeg/include
+	../thirdparty/SFML
+	../thirdparty/DeepSpeech/include
 	${CURSES_INCLUDE_DIR}
 	../thirdparty/zxing-cpp/_install/include/ZXing
 )
@@ -438,6 +442,20 @@ target_link_libraries(aprapipesut
   Boost::system
   Boost::boost    
   ${OpenCV_LIBS}
+  ${LIB_DEEPSPEECH}
+  pthread
+  sfml-graphics
+  sfml-window
+  sfml-audio
+  sfml-system
+  rnnoise
+  xcb
+  xcb-shape
+  xcb-xfixes
+  pthread
+  m
+  ${LIB_SHM}
+  ${LIB_ASOUND}
   ${NVCUDAToolkit_LIBS}
   ${NVCODEC_LIB}
   ${NVJPEGLIB_L4T}  
