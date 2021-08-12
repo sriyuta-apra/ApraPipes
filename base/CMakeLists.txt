@@ -135,6 +135,9 @@ SET(CORE_FILES
 	src/Utils.cpp
 	src/FIndexStrategy.cpp
 	src/KeyboardListener.cpp
+	src/SoundRecord.cpp
+	src/Denoise.cpp
+	src/SpeechToText.cpp
 )
 
 SET(include/CORE_FILES_H
@@ -177,6 +180,9 @@ SET(include/CORE_FILES_H
 	include/MetadataHints.h
 	include/FIndexStrategy.h
 	include/KeyboardListener.h
+	include/SoundRecord.h
+	include/Denoise.h
+	include/SpeechToText.h
 )
 
 IF(ENABLE_WINDOWS)
