@@ -428,6 +428,7 @@ SET(UT_FILES
 	test/ImageEncodeCV_tests.cpp
 	test/QRReader_tests.cpp
 	test/rotatecv_tests.cpp
+	test/SpeechToText_test.cpp
 	${ARM64_UT_FILES}
 	${CUDA_UT_FILES}	
 )

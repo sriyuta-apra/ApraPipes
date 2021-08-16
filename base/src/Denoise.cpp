@@ -88,7 +88,6 @@ bool Denoise::process(frame_container &frames)
 	auto a = frame->size();
 	auto outSize = (mPrevSampleSize + frame->size()) - (extraSampleSize);
 	auto outFrame = makeFrame(outSize);
-	LOG_INFO << frame->size();
 	int chunks = (mPrevSampleSize + frame->size()) / CHUNK_SIZE;
 
 	if (mPrevSampleSize != 0)
@@ -136,10 +135,10 @@ bool Denoise::process(frame_container &frames)
 	//send 5 sec chunk
 	memcpy(fiveSecFrame->data() + counter * outFrame->size(), outFrame->data(), outFrame->size());
 	counter = counter + 1;
-	LOG_INFO << counter;
+	// LOG_INFO << counter;
 	if (counter == check)
 	{
-		LOG_INFO << "I AM SENDING A CHUNK OF FRAME";
+		// LOG_INFO << "I AM SENDING A CHUNK OF FRAME";
 		frames.insert(make_pair(mOutputPinId, fiveSecFrame));
 		send(frames);
 		check = check + 50;

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Module.h"
-#include "/home/developer/Projects/sfml/rnnoise/include/rnnoise.h"
+#include "/home/developer/ApraPipes-local/ApraPipes/thirdparty/rnnoise/include/rnnoise.h"
 
 class DenoiseProps : public ModuleProps
 {
