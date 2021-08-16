@@ -204,7 +204,7 @@ bool SpeechToText::process(frame_container &frames)
         {
             fVector.insert(fVector.end(), static_cast<uint16_t*>(frame->data()), static_cast<uint16_t*>(frame->data())+frame->size());
             auto outFrame = makeFrame(fVector.size());
-            memcpy(outFrame->data(), &fVector[0], fVector.size());
+            memcpy(outFrame->data(), &fVector[0]+16000, fVector.size()-8000);
             frames.insert(make_pair(mOutputPinId, outFrame));
             send(frames);
             LOG_INFO << "frames sent";
