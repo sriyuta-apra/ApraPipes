@@ -22,15 +22,12 @@ public:
         src_ch_layout = _src_ch_layout;
         src_sample_fmt = _src_sample_format;
     }
-    const char* model_path;
-    const char* scorer_path;
     size_t BufferSize;
     int src_rate;
     int64_t src_ch_layout;
     AVSampleFormat src_sample_fmt;
 };
 
-class SpeechToText : public Module
 {
 public:
     SpeechToText(SpeechToTextProps _props);
@@ -38,7 +35,6 @@ public:
     
     virtual bool init();
     virtual bool term();
-    // std::string mText;
 
 protected:
     bool process(frame_container &frames);
@@ -49,10 +45,7 @@ protected:
     SwrContext *swr;
     bool validateInputPins();
     bool validateOutputPins();
-    uint64_t frIndex;
     std::vector<uint8_t> fVector;
-    std::vector<short> mVector;
-    int totalSamples;
     const uint8_t *src_data;
     void addInputPin(framemetadata_sp &metadata, string &pinId);
 
@@ -60,7 +53,5 @@ private:
     class Detail;
     boost::shared_ptr<Detail> mDetail;
     std::string mOutputPinId;
-    SpeechToTextProps props;
-    Metadata* partialMet;
-    
+    SpeechToTextProps props;    
 };

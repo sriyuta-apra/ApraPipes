@@ -187,100 +187,114 @@ void SpeechToText::addInputPin(framemetadata_sp &metadata, string &pinId)
 //process
 bool SpeechToText::process(frame_container &frames)
 {
-    LOG_INFO << 3;
-    auto frame = frames.cbegin()->second; // taking the data from the mapping
+    auto frame = frames.cbegin()->second;
+    float tStart=0.0, tEnd =0.0;
     if (isFrameEmpty(frame))
     {
         return true;
     }
+
+    else if(tBufferSize > props.BufferSize)
+    {
+        LOG_INFO << "Freeing stream";
+        DS_FreeStream(sCtx); //or we can do DS_FinishStream here for the last frame
+        tBufferSize =0;
+        fVector.clear();
+        // fVector.insert(fVector.end(), static_cast<uint16_t*>(frame->data()), static_cast<uint16_t*>(frame->data())+frame->size()); 
+    }
     else
     {
-        if(tBufferSize <= props.BufferSize)
+        if(tBufferSize < props.BufferSize)
         {
-            fVector.insert(fVector.end(), static_cast<uint16_t*>(frame->data()), static_cast<uint16_t*>(frame->data())+frame->size());
-            tBufferSize+= frame->size();
-        }
-        else
-        {
-            fVector.insert(fVector.end(), static_cast<uint16_t*>(frame->data()), static_cast<uint16_t*>(frame->data())+frame->size());
-            auto outFrame = makeFrame(fVector.size());
-            memcpy(outFrame->data(), &fVector[0]+16000, fVector.size()-8000);
-            frames.insert(make_pair(mOutputPinId, outFrame));
-            send(frames);
-            LOG_INFO << "frames sent";
-            tBufferSize=0;
-            fVector.clear();
-        }
-    }
-    // else
-    // { 
-    //     if(tBufferSize < props.BufferSize)
-    //     {
-    //         //initializing the stream
-    //         if(tBufferSize ==0)
-    //         {
-    //             int status = DS_CreateStream(ctx, &sCtx);
-    //         }
-    //         //register the audio to a vector before resampling
+            if(fState == false)
+            {
+               //initializing the stream
+                if(tBufferSize == 0)
+                {
+                    int status = DS_CreateStream(ctx, &sCtx);
+                    sentence="";
+                }
+                //register the audio to a vector before resampling
+                fVector.insert(fVector.end(), static_cast<uint16_t*>(frame->data()), static_cast<uint16_t*>(frame->data())+frame->size());
 
-    //         //do resampling
-    //         const uint8_t* src_data =  (const uint8_t*)frame->data(); 
-    //         uint8_t *dst_data;                             
-    //         int dst_linesize;     
-    //         int src_nb_samples = frame->size() / (2*av_get_channel_layout_nb_channels(props.src_ch_layout)); 
+                // declaring the metaphone string template
+                string mTemplate = {"HL PL PKS M NM AS "};
 
-    //         int dst_nb_channels = av_get_channel_layout_nb_channels(AV_CH_LAYOUT_MONO);
-    //         int dst_nb_samples = av_rescale_rnd(swr_get_delay(swr, props.src_rate) + src_nb_samples, 16000, props.src_rate, AV_ROUND_UP);
-    //         av_samples_alloc(&dst_data, &dst_linesize, dst_nb_channels, dst_nb_samples, AV_SAMPLE_FMT_S16, 1);
-    //         int ret = swr_convert(swr, &dst_data, dst_nb_samples, &src_data, src_nb_samples);
-    //         int dst_bufsize = av_samples_get_buffer_size(&dst_linesize, dst_nb_channels,ret, AV_SAMPLE_FMT_S16, 1);
+                //do resampling
+                const uint8_t* src_data =  (const uint8_t*)frame->data(); 
+                uint8_t *dst_data;                             
+                int dst_linesize;     
+                int src_nb_samples = frame->size() / (2*av_get_channel_layout_nb_channels(props.src_ch_layout)); 
+                int dst_nb_channels = av_get_channel_layout_nb_channels(AV_CH_LAYOUT_MONO);
+                int dst_nb_samples = av_rescale_rnd(swr_get_delay(swr, props.src_rate) + src_nb_samples, 16000, props.src_rate, AV_ROUND_UP);
+                av_samples_alloc(&dst_data, &dst_linesize, dst_nb_channels, dst_nb_samples, AV_SAMPLE_FMT_S16, 1);
+                int ret = swr_convert(swr, &dst_data, dst_nb_samples, &src_data, src_nb_samples);
+                int dst_bufsize = av_samples_get_buffer_size(&dst_linesize, dst_nb_channels,ret, AV_SAMPLE_FMT_S16, 1);
+                tBufferSize+=frame->size();
+
+                //feed the resampled frames to the stream
+                DS_FeedAudioContent(sCtx, (const short*)dst_data, (unsigned int)ret);
+
+                //do intermediate decode for the samples
+                Metadata* partialMetadata = DS_IntermediateDecodeWithMetadata(sCtx,1);
+
+                //get the entire sentence from the metadata 
+                const CandidateTranscript* InterTrans = &partialMetadata->transcripts[0];
             
-    //         //feed the resampled frames to the stream
-    //         DS_FeedAudioContent(sCtx, (const short*)dst_data, (unsigned int)ret);
-
-    //         //do intermediate decode for the samples
-    //         Metadata* partialMetadata = DS_IntermediateDecodeWithMetadata(sCtx,1);
-
-    //         //get the entire sentence from the metadata 
-    //         const CandidateTranscript* InterTrans = &partialMetadata->transcripts[0];
-    //         std::string sentence;
-    //         for (int i = 0; i < InterTrans->num_tokens; i++)
-    //             sentence.append(InterTrans->tokens[i].text);
+                for (int i = 0; i < InterTrans->num_tokens; i++)
+                    sentence.append(InterTrans->tokens[i].text);
             
-    //         LOG_INFO << sentence;
+                LOG_INFO << sentence;
             
-    //         //do jaro similarity test to the sentence
-    //         double score = mDetail->jaro_distance(sentence, "hello blue box my name is ");
+                //do jaro similarity test to the sentence
+                double score = mDetail->jaro_distance(sentence, "hello blue box my name is ");
 
-    //         //set threshold (temporarily inside here, later outside) = 0.77
-    //         if(score > 0.5 && score < 1)
-    //         {
-    //             LOG_INFO << "Jaro score above threshold " << "for this sentence : " << sentence;
-    //             //reset the tBufferSize
-    //             tBufferSize =0;
-    //             sentence = "";
-    //             DS_FreeStream(sCtx);
-    //             DS_FreeMetadata(partialMetadata);
-    //         }
-    //         else
-    //         {
-    //             LOG_INFO << "Jaro score below threshold " << "for this sentence : " << sentence;
-    //             tBufferSize+= dst_bufsize;
-    //             sentence = "";
-    //         }            
-    //     }
-    //     else
-    //     {
-    //         DS_FreeStream(sCtx); //or we can do DS_FinishStream here for the last frame
-    //         tBufferSize =0;
-            
-    //     }
-    // }
+
+                //set threshold (temporarily inside here, later outside) = 0.77
+                if(score > 0.5)
+                {
+                    // fState = true;
+                    LOG_INFO << "Jaro score above threshold, 0.5" << " for this sentence : " << sentence;
+                    
+                    //logging the start and end non space character's start time
+                    for (int i = 0; i < InterTrans->num_tokens; i++)
+                    {
+                        if(strcmp(InterTrans->tokens[i].text, " ")) //compare for all tokens with space
+                        {   
+                            count+=1; //if true do a count++
+                            if(count == 1)
+                            {
+                                tStart = InterTrans->tokens[i].start_time; //if it is the first time log it in tStart
+                                LOG_INFO << "first token is " << InterTrans->tokens[i].text;
+                            }
+                            else
+                            {
+                                tEnd = InterTrans->tokens[i].start_time; // rest of the other times log it in tEnd
+                                LOG_INFO << "last token is " << InterTrans->tokens[i].text;
+                            }
+                        }
+                    }
+                    //here is the issue
+                    auto outFrame = makeFrame(2*(fVector.size()-(2*tStart*props.src_rate)));
+
+                    memcpy(outFrame->data(), (uint16_t*)((uint8_t*)&fVector[0]+(size_t)(2*tStart*props.src_rate)), 2*(fVector.size()-(2*tStart*props.src_rate)));
+                    LOG_INFO <<"frames sent";
+                    frames.insert(make_pair(mOutputPinId, outFrame));
+                    send(frames);
+                    
+                    fVector.clear();
+                    count = 0;
+                    tBufferSize =0;
+
+                    DS_FreeMetadata(partialMetadata);
+                    DS_FreeStream(sCtx);
+                }      
+            } 
+        } 
+    }  
+    sentence ="";
     return true;
-}
-
-//init and term
-bool SpeechToText::init()
+}     bool SpeechToText::init()
 {
     return Module::init();
 }
