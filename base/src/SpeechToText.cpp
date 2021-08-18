@@ -188,7 +188,7 @@ void SpeechToText::addInputPin(framemetadata_sp &metadata, string &pinId)
 bool SpeechToText::process(frame_container &frames)
 {
     auto frame = frames.cbegin()->second;
-    float tStart=0.0, tEnd =0.0;
+    float tStart=0.0;
     if (isFrameEmpty(frame))
     {
         return true;
@@ -200,7 +200,6 @@ bool SpeechToText::process(frame_container &frames)
         DS_FreeStream(sCtx); //or we can do DS_FinishStream here for the last frame
         tBufferSize =0;
         fVector.clear();
-        // fVector.insert(fVector.end(), static_cast<uint16_t*>(frame->data()), static_cast<uint16_t*>(frame->data())+frame->size()); 
     }
     else
     {
@@ -249,6 +248,7 @@ bool SpeechToText::process(frame_container &frames)
                 //do jaro similarity test to the sentence
                 double score = mDetail->jaro_distance(sentence, "hello blue box my name is ");
 
+
                 //set threshold (temporarily inside here, later outside) = 0.77
                 if(score > 0.5)
                 {
@@ -266,15 +266,9 @@ bool SpeechToText::process(frame_container &frames)
                                 tStart = InterTrans->tokens[i].start_time; //if it is the first time log it in tStart
                                 LOG_INFO << "first token is " << InterTrans->tokens[i].text;
                             }
-                            else
-                            {
-                                tEnd = InterTrans->tokens[i].start_time; // rest of the other times log it in tEnd
-                                LOG_INFO << "last token is " << InterTrans->tokens[i].text;
-                            }
                         }
                     }
                     auto outFrame = makeFrame(2*(fVector.size()-(2*tStart*props.src_rate)));
-
                     memcpy(outFrame->data(), (uint16_t*)((uint8_t*)&fVector[0]+(size_t)(2*tStart*props.src_rate)), 2*(fVector.size()-(2*tStart*props.src_rate)));
                     LOG_INFO <<"frames sent";
                     frames.insert(make_pair(mOutputPinId, outFrame));
@@ -292,7 +286,8 @@ bool SpeechToText::process(frame_container &frames)
     }  
     sentence ="";
     return true;
-}     bool SpeechToText::init()
+}     
+bool SpeechToText::init()
 {
     return Module::init();
 }
