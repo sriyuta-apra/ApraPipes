@@ -248,8 +248,13 @@ bool SpeechToText::process(frame_container &frames)
             
                 //do jaro similarity test to the sentence
                 double score = mDetail->jaro_distance(sentence, "hello blue box my name is ");
+<<<<<<< HEAD
 
 
+=======
+
+
+>>>>>>> 503a8b73d62a29fa95290dbd1858cc6a4efd894b
                 //set threshold (temporarily inside here, later outside) = 0.77
                 if(score > 0.5)
                 {
@@ -276,7 +281,11 @@ bool SpeechToText::process(frame_container &frames)
                     }
                     //here is the issue
                     auto outFrame = makeFrame(2*(fVector.size()-(2*tStart*props.src_rate)));
+<<<<<<< HEAD
 
+=======
+                    // auto outFrame = makeFrame(2*((2*tEnd*props.src_rate) - (2*tStart*props.src_rate)));
+>>>>>>> 503a8b73d62a29fa95290dbd1858cc6a4efd894b
                     memcpy(outFrame->data(), (uint16_t*)((uint8_t*)&fVector[0]+(size_t)(2*tStart*props.src_rate)), 2*(fVector.size()-(2*tStart*props.src_rate)));
                     LOG_INFO <<"frames sent";
                     frames.insert(make_pair(mOutputPinId, outFrame));
@@ -287,7 +296,12 @@ bool SpeechToText::process(frame_container &frames)
                     tBufferSize =0;
 
                     DS_FreeMetadata(partialMetadata);
+<<<<<<< HEAD
                     DS_FreeStream(sCtx);
+=======
+                    char* endRes = DS_FinishStream(sCtx);
+                    LOG_INFO << endRes;
+>>>>>>> 503a8b73d62a29fa95290dbd1858cc6a4efd894b
                 }      
             } 
         } 
