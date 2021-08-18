@@ -187,103 +187,179 @@ void SpeechToText::addInputPin(framemetadata_sp &metadata, string &pinId)
 //process
 bool SpeechToText::process(frame_container &frames)
 {
+    const uint8_t* src_data;
+    int src_nb_samples;
     auto frame = frames.cbegin()->second;
-    float tStart=0.0;
+    float tStart=0.0, tEnd =0.0;
     if (isFrameEmpty(frame))
     {
         return true;
     }
-
+    
     else if(tBufferSize > props.BufferSize)
     {
-        LOG_INFO << "Freeing stream";
-        DS_FreeStream(sCtx); //or we can do DS_FinishStream here for the last frame
-        tBufferSize =0;
-        fVector.clear();
+        DS_FreeStream(sCtx);
+        LOG_INFO << "Freeing the stream";
+        tBufferSize = 0;
+        //frames lost so add to fVector
     }
     else
     {
-        if(tBufferSize < props.BufferSize)
+        if(fState == false)
         {
-            if(fState == false)
+            if(tBufferSize==0)
             {
-               //initializing the stream
-                if(tBufferSize == 0)
+                //Create Stream and check for previous samples
+                int status = DS_CreateStream(ctx, &sCtx);
+                LOG_INFO << "Creating stream"; 
+                sentence = "";
+                if(fVector.empty())
                 {
-                    int status = DS_CreateStream(ctx, &sCtx);
-                    sentence="";
+                    //src_data will be the current frame
+                    fVector.insert(fVector.end(), static_cast<uint16_t*>(frame->data()), static_cast<uint16_t*>(frame->data() + frame->size() ));
+                    src_data =  (const uint8_t*)frame->data();
+                    src_nb_samples = frame->size() / (2*av_get_channel_layout_nb_channels(props.src_ch_layout));
+                    tBufferSize+=frame->size();
                 }
-                //register the audio to a vector before resampling
-                fVector.insert(fVector.end(), static_cast<uint16_t*>(frame->data()), static_cast<uint16_t*>(frame->data())+frame->size());
-
-                // declaring the metaphone string template
-                string mTemplate = {"HL PL PKS M NM AS "};
-
-                //do resampling
-                const uint8_t* src_data =  (const uint8_t*)frame->data(); 
-                uint8_t *dst_data;                             
-                int dst_linesize;     
-                int src_nb_samples = frame->size() / (2*av_get_channel_layout_nb_channels(props.src_ch_layout)); 
-                int dst_nb_channels = av_get_channel_layout_nb_channels(AV_CH_LAYOUT_MONO);
-                int dst_nb_samples = av_rescale_rnd(swr_get_delay(swr, props.src_rate) + src_nb_samples, 16000, props.src_rate, AV_ROUND_UP);
-                av_samples_alloc(&dst_data, &dst_linesize, dst_nb_channels, dst_nb_samples, AV_SAMPLE_FMT_S16, 1);
-                int ret = swr_convert(swr, &dst_data, dst_nb_samples, &src_data, src_nb_samples);
-                int dst_bufsize = av_samples_get_buffer_size(&dst_linesize, dst_nb_channels,ret, AV_SAMPLE_FMT_S16, 1);
-                tBufferSize+=frame->size();
-
-                //feed the resampled frames to the stream
-                DS_FeedAudioContent(sCtx, (const short*)dst_data, (unsigned int)ret);
-
-                //do intermediate decode for the samples
-                Metadata* partialMetadata = DS_IntermediateDecodeWithMetadata(sCtx,1);
-
-                //get the entire sentence from the metadata 
-                const CandidateTranscript* InterTrans = &partialMetadata->transcripts[0];
-            
-                for (int i = 0; i < InterTrans->num_tokens; i++)
-                    sentence.append(InterTrans->tokens[i].text);
-            
-                LOG_INFO << sentence;
-            
-                //do jaro similarity test to the sentence
-                double score = mDetail->jaro_distance(sentence, "hello blue box my name is ");
-
-
-                //set threshold (temporarily inside here, later outside) = 0.77
-                if(score > 0.5)
+                else
                 {
-                    // fState = true;
-                    LOG_INFO << "Jaro score above threshold, 0.5" << " for this sentence : " << sentence;
-                    
-                    //logging the start and end non space character's start time
-                    for (int i = 0; i < InterTrans->num_tokens; i++)
-                    {
-                        if(strcmp(InterTrans->tokens[i].text, " ")) //compare for all tokens with space
-                        {   
-                            count+=1; //if true do a count++
-                            if(count == 1)
-                            {
-                                tStart = InterTrans->tokens[i].start_time; //if it is the first time log it in tStart
-                                LOG_INFO << "first token is " << InterTrans->tokens[i].text;
-                            }
+                    // src_data will be fVector + current frame
+                    fVector.insert(fVector.end(), static_cast<uint16_t*>(frame->data()), static_cast<uint16_t*>(frame->data() + frame->size() ));
+                    src_data =  (const uint8_t*)&fVector[0];
+                    src_nb_samples = fVector.size() / (2*av_get_channel_layout_nb_channels(props.src_ch_layout));
+                    tBufferSize+=fVector.size();
+                }
+                LOG_INFO << tBufferSize; 
+
+            }
+            else
+            {
+                fVector.insert(fVector.end(), static_cast<uint16_t*>(frame->data()), static_cast<uint16_t*>(frame->data() + frame->size() ));
+                src_data =  (const uint8_t*)frame->data();
+                src_nb_samples = frame->size() / (2*av_get_channel_layout_nb_channels(props.src_ch_layout));
+                tBufferSize+=frame->size();
+            }
+            //resample
+            uint8_t *dst_data;                             
+            int dst_linesize;     
+             //fVector the first time and not frame->size()
+            int dst_nb_channels = av_get_channel_layout_nb_channels(AV_CH_LAYOUT_MONO);
+            int dst_nb_samples = av_rescale_rnd(swr_get_delay(swr, props.src_rate) + src_nb_samples, 16000, props.src_rate, AV_ROUND_UP);
+            av_samples_alloc(&dst_data, &dst_linesize, dst_nb_channels, dst_nb_samples, AV_SAMPLE_FMT_S16, 1);
+            int ret = swr_convert(swr, &dst_data, dst_nb_samples, &src_data, src_nb_samples);
+            int dst_bufsize = av_samples_get_buffer_size(&dst_linesize, dst_nb_channels,ret, AV_SAMPLE_FMT_S16, 1);
+
+            //feed the audio to the stream
+            DS_FeedAudioContent(sCtx, (const short*)dst_data, (unsigned int)ret);
+
+            //get the intermediate result
+            Metadata* partialMetadata = DS_IntermediateDecodeWithMetadata(sCtx,1);
+
+            //get the entire sentence from the metadata 
+            const CandidateTranscript* InterTrans = &partialMetadata->transcripts[0];      
+
+            for (int i = 0; i < InterTrans->num_tokens; i++)
+                sentence.append(InterTrans->tokens[i].text);  
+            LOG_INFO  << sentence;
+
+            //do jaro similarity test to the sentence
+            double score = mDetail->jaro_distance(sentence, "hello blue box my name is ");
+            
+
+            if((0.5 < score)  && (score< 0.9) && (tBufferSize>props.BufferSize))
+            {
+                //it means not a prefect match
+                //logging the start and end non space character's start time
+                for (int i = 0; i < InterTrans->num_tokens; i++)
+                {
+                    if(strcmp(InterTrans->tokens[i].text, " ")) //compare for all tokens with space
+                    {   
+                        count+=1; //if true do a count++
+                        if(count == 1)
+                        {
+                            tStart = InterTrans->tokens[i].start_time; //if it is the first time log it in tStart
+                            LOG_INFO << "first token is " << InterTrans->tokens[i].text;
+                        }
+                        else
+                        {
+                            tEnd = InterTrans->tokens[i].start_time; // rest of the other times log it in tEnd
+                            LOG_INFO << "last token is " << InterTrans->tokens[i].text;
                         }
                     }
+                }
+                //update fVector for these timings
+
+                memcpy(&fVector[0], (uint16_t*)((uint8_t*)&fVector[0]+(size_t)(2*tStart*props.src_rate)), 2*(fVector.size()- tStart*props.src_rate));
+                fVector.resize(2*(fVector.size()- 2*tStart*props.src_rate));
+
+                //reset tBufferSize to 0
+                tBufferSize =0;
+                DS_FreeStream(sCtx);
+                LOG_INFO << "tBufferSize is set to 0";
+                LOG_INFO << "score" << score;
+                //reset count =0
+                count =0;
+            }
+            else if(score >= 0.9)
+            {
+                //log times and send frames to next module.
+                //Also reset the tBufferSize and reset Stream
+                for (int i = 0; i < InterTrans->num_tokens; i++)
+                {
+                    if(strcmp(InterTrans->tokens[i].text, " ")) //compare for all tokens with space
+                    {   
+                        count+=1; //if true do a count++
+                        if(count == 1)
+                        {
+                            tStart = InterTrans->tokens[i].start_time; //if it is the first time log it in tStart
+                            LOG_INFO << "first token is " << InterTrans->tokens[i].text;
+                            LOG_INFO << "start time is " << InterTrans->tokens[i].start_time;
+                        }
+                        else
+                        {
+                            tEnd = InterTrans->tokens[i].start_time; // rest of the other times log it in tEnd
+                            LOG_INFO << "last token is " << InterTrans->tokens[i].text;
+                            LOG_INFO << "start time is " << InterTrans->tokens[i].start_time;
+                        }
+                    }
+                }
+                fState = true;
+                DS_FreeMetadata(partialMetadata);
+                DS_FreeStream(sCtx);
+                LOG_INFO << "freeing stream";
+                tBufferSize =0;
+                count =0;       
+            }
+        }
+        else
+        {
+            //accumulate the next 0.5 secs
+             if( count <= 48000)
+                {
+                    LOG_INFO << "accumulating the last 0.5 secs of audio now";
+                    fVector.insert(fVector.end(), static_cast<uint16_t*>(frame->data()), static_cast<uint16_t*>(frame->data() + frame->size() ));
+                    count+=frame->size();
+                }
+            else //here a frame is getting dropped
+                {
+                    tBufferSize =0;
+                    count =0;
+                    LOG_INFO << "sending out frames now";
+                    LOG_INFO << "time of frame sent out should be" << (float)(tEnd - tStart) ;
                     auto outFrame = makeFrame(2*(fVector.size()-(2*tStart*props.src_rate)));
                     memcpy(outFrame->data(), (uint16_t*)((uint8_t*)&fVector[0]+(size_t)(2*tStart*props.src_rate)), 2*(fVector.size()-(2*tStart*props.src_rate)));
-                    LOG_INFO <<"frames sent";
                     frames.insert(make_pair(mOutputPinId, outFrame));
                     send(frames);
-                    
                     fVector.clear();
-                    count = 0;
-                    tBufferSize =0;
+                    //add frame to fVector after clearing the vector
+                    fState = false;
+                }
+        }
+    }
+    sentence ="";
+    return true;
+}       
 
-                    DS_FreeMetadata(partialMetadata);
-                    DS_FreeStream(sCtx);
-                }      
-            } 
-        } 
-    }  
     sentence ="";
     return true;
 }     

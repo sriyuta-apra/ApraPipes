@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Module.h"
-#include "/home/developer/ApraPipes-local/ApraPipes/thirdparty/rnnoise/include/rnnoise.h"
+#include "/home/developer/Documents/repos/aprapipes_audio/rnn/rnnoise/include/rnnoise.h"
 
 class DenoiseProps : public ModuleProps
 {
@@ -47,6 +47,4 @@ private:
     frame_sp fiveSecFrame;
     size_t mPrevSampleSize;
     size_t CHUNK_COUNT = 480;
-    int counter = 0; 
-    int check = counter + 30;
 };
