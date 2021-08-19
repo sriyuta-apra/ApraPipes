@@ -2,6 +2,7 @@
 
 #include "Module.h"
 #include <vector>
+#include <string>
 #include <iostream>
 
 extern "C"{
@@ -22,12 +23,15 @@ public:
         src_ch_layout = _src_ch_layout;
         src_sample_fmt = _src_sample_format;
     }
+    const char* model_path;
+    const char* scorer_path;
     size_t BufferSize;
     int src_rate;
     int64_t src_ch_layout;
     AVSampleFormat src_sample_fmt;
 };
 
+class SpeechToText : public Module
 {
 public:
     SpeechToText(SpeechToTextProps _props);
@@ -38,20 +42,24 @@ public:
 
 protected:
     bool process(frame_container &frames);
+    bool validateInputPins();
+    bool validateOutputPins();
+    void addInputPin(framemetadata_sp &metadata, string &pinId);
     ModelState *ctx;
     StreamingState *sCtx;
     size_t tBufferSize;
-    int count;
     SwrContext *swr;
-    bool validateInputPins();
-    bool validateOutputPins();
-    std::vector<uint8_t> fVector;
+    bool fState,scoreIncreasing;
+    float tStart,maxScoreForCurrentStream;
+    int count,numberOfFramesScoreSame;
+    string sentence;
+    vector<uint16_t> fVector;
     const uint8_t *src_data;
-    void addInputPin(framemetadata_sp &metadata, string &pinId);
 
 private:
     class Detail;
     boost::shared_ptr<Detail> mDetail;
-    std::string mOutputPinId;
-    SpeechToTextProps props;    
+    string mOutputPinId;
+    SpeechToTextProps props;
+    
 };

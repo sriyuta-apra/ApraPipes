@@ -45,6 +45,7 @@ BOOST_AUTO_TEST_CASE(test_0)
     auto stt = boost::shared_ptr<Module>(new SpeechToText(sttProps));
     denoiser->setNext(stt, pins);
     denoiser->setNext(fileWriter_with_denoise,pins);
+    stt->setNext(fileWriter_with_deepspeechAudio);
 
     PipeLine stt_p("test_0");
     stt_p.appendModule(source);

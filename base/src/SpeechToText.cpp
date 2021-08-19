@@ -10,6 +10,8 @@
 #include "Logger.h"
 #include "AIPExceptions.h"
 
+
+
 extern "C"
 {
 #include <libavutil/opt.h>
@@ -24,76 +26,79 @@ public:
     Detail(SpeechToTextProps props)
     {
     }
-    double jaro_distance(string s1, string s2) 
-    {
-        // If the strings are equal
-        if (s1 == s2)
+double jaro_distance(string s1, string s2)
+{
+    int missing =0;
+    // Length of two strings
+    int len1 = s1.length(),len2 = s2.length();
+    // If the strings are equal
+    if (s1 == s2)
+        {
             return 1.0;
-
-        // Length of two strings
-        int len1 = s1.length(),
-            len2 = s2.length();
-
-        // Maximum distance upto which matching
-        // is allowed
-        int max_dist = floor(max(len1, len2) / 2) - 1;
-
-        // Count of matches
-        int match = 0;
-
-        // Hash for matches
-        int hash_s1[s1.length()] = { 0 },
-            hash_s2[s2.length()] = { 0 };
-
-        // Traverse through the first string
-        for (int i = 0; i < len1; i++) {
-        
-            // Check if there is any matches
-            for (int j = max(0, i - max_dist);
-                    j < min(len2, i + max_dist + 1); j++)
-
-                // If there is a match
-                if (s1[i] == s2[j] && hash_s2[j] == 0) {
-                    hash_s1[i] = 1;
-                    hash_s2[j] = 1;
-                    match++;
-                    break;
-                }
         }
+    string string1 = s1;
 
-        // If there is no match
-        if (match == 0)
-            return 0.0;
-
-        // Number of transpositions
-        double t = 0;
-
-        int point = 0;
-
-        // Count number of occurrences
-        // where two characters match but
-        // there is a third matched character
-        // in between the indices
-        for (int i = 0; i < len1; i++)
-            if (hash_s1[i]) {
-            
-                // Find the next matched character
-                // in second string
-                while (hash_s2[point] == 0)
-                    point++;
-
-                if (s1[i] != s2[point++])
-                    t++;
+ 
+    // Maximum distance upto which matching
+    // is allowed
+    int max_dist = floor(max(len1, len2) / 2) - 1;
+ 
+    // Count of matches
+    int match = 0;
+ 
+    // Hash for matches
+    int hash_s1[s1.length()] = { 0 },
+        hash_s2[s2.length()] = { 0 };
+ 
+    // Traverse through the first string
+    for (int i = 0; i < len1; i++) {
+ 
+        // Check if there is any matches
+        for (int j = max(0, i - max_dist);
+             j < min(len2, i + max_dist + 1); j++)
+ 
+            // If there is a match
+            if (s1[i] == s2[j] && hash_s2[j] == 0) {
+                hash_s1[i] = 1;
+                hash_s2[j] = 1;
+                match++;
+                break;
             }
-
-        t /= 2;
-
-        // Return the Jaro Similarity
-        return (((double)match) / ((double)len1)
-                + ((double)match) / ((double)len2)
-                + ((double)match - t) / ((double)match))
-                / 3.0;
     }
+ 
+    // If there is no match
+    if (match == 0)
+    {
+        return 0.0;
+    }
+ 
+    // Number of transpositions
+    double t = 0;
+ 
+    int point = 0;
+ 
+    for (int i = 0; i < len1; i++)
+        if (hash_s1[i]) {
+ 
+            while (hash_s2[point] == 0)
+                point++;
+ 
+            if (s1[i] != s2[point++])
+                t++;
+        }
+ 
+    t /= 2;    
+
+    missing = len2-match+t;
+    double score = (((double)match) / ((double)len1)+ ((double)match) / ((double)len2)
+            + ((double)match - t) / ((double)match))
+           / 3.0;
+    
+    score = score - double(missing/len2);
+    // Return the Jaro Similarity
+    return score;
+}
+
     ~Detail() {}
 };
 
@@ -101,12 +106,16 @@ public:
 SpeechToText::SpeechToText(SpeechToTextProps _props) : Module(TRANSFORM, "SpeechToText", _props), tBufferSize(0)
 {
     mDetail.reset(new Detail(_props));
-    auto mText = framemetadata_sp(new FrameMetadata(FrameMetadata::FrameType::GENERAL)); //need to change FrameType
-    mOutputPinId = addOutputPin(mText);
+    auto mAudio = framemetadata_sp(new FrameMetadata(FrameMetadata::FrameType::AUDIO)); 
+    mOutputPinId = addOutputPin(mAudio);
     count = 0;
+    maxScoreForCurrentStream = 0.0;
+    fState = false;
+    scoreIncreasing = false;
+    numberOfFramesScoreSame =0;
+    LOG_INFO<< "Constructor";
     int status = DS_CreateModel("/home/developer/development/aprapipes_audio/data/deepspeech-0.9.3-models.pbmm", &ctx);
     status = DS_EnableExternalScorer(ctx, "/home/developer/Downloads/native_client.amd64.tflite.linux/bluebox.scorer");
-    // status = DS_EnableExternalScorer(ctx, "/home/developer/development/aprapipes_audio/data/deepspeech-0.9.3-models.scorer");
     
     try
     {
@@ -134,10 +143,9 @@ SpeechToText::~SpeechToText()
     swr_free(&swr);
     DS_FreeModel(ctx);
 }
-
-//adding and validating input output pins
 bool SpeechToText::validateInputPins()
 {
+
     framemetadata_sp metadata = getFirstInputMetadata();
     FrameMetadata::FrameType frameType = metadata->getFrameType();
     if (frameType != FrameMetadata::AUDIO)
@@ -158,6 +166,8 @@ bool SpeechToText::validateInputPins()
         return false;
     }
 
+    // LOG_INFO<<"DONE Validate input pins";
+
     return true;
 }
 
@@ -165,7 +175,7 @@ bool SpeechToText::validateOutputPins()
 {
     framemetadata_sp metadata = getFirstOutputMetadata();
     auto mOutputFrameType = metadata->getFrameType();
-    if (mOutputFrameType != FrameMetadata::GENERAL)
+    if (mOutputFrameType != FrameMetadata::AUDIO)
     {
         LOG_ERROR << "<" << getId() << ">::validateOutputPins input frameType is expected to be general. Actual<" << mOutputFrameType << ">";
         return false;
@@ -195,13 +205,13 @@ bool SpeechToText::process(frame_container &frames)
     {
         return true;
     }
-    
+    //VAD
     else if(tBufferSize > props.BufferSize)
     {
         DS_FreeStream(sCtx);
         LOG_INFO << "Freeing the stream";
         tBufferSize = 0;
-        //frames lost so add to fVector
+        fVector.insert(fVector.end(), static_cast<uint16_t*>(frame->data()), static_cast<uint16_t*>(frame->data() + frame->size() ));
     }
     else
     {
@@ -211,6 +221,7 @@ bool SpeechToText::process(frame_container &frames)
             {
                 //Create Stream and check for previous samples
                 int status = DS_CreateStream(ctx, &sCtx);
+                maxScoreForCurrentStream =0;
                 LOG_INFO << "Creating stream"; 
                 sentence = "";
                 if(fVector.empty())
@@ -226,10 +237,9 @@ bool SpeechToText::process(frame_container &frames)
                     // src_data will be fVector + current frame
                     fVector.insert(fVector.end(), static_cast<uint16_t*>(frame->data()), static_cast<uint16_t*>(frame->data() + frame->size() ));
                     src_data =  (const uint8_t*)&fVector[0];
-                    src_nb_samples = fVector.size() / (2*av_get_channel_layout_nb_channels(props.src_ch_layout));
+                    src_nb_samples = fVector.size();
                     tBufferSize+=fVector.size();
                 }
-                LOG_INFO << tBufferSize; 
 
             }
             else
@@ -242,7 +252,6 @@ bool SpeechToText::process(frame_container &frames)
             //resample
             uint8_t *dst_data;                             
             int dst_linesize;     
-             //fVector the first time and not frame->size()
             int dst_nb_channels = av_get_channel_layout_nb_channels(AV_CH_LAYOUT_MONO);
             int dst_nb_samples = av_rescale_rnd(swr_get_delay(swr, props.src_rate) + src_nb_samples, 16000, props.src_rate, AV_ROUND_UP);
             av_samples_alloc(&dst_data, &dst_linesize, dst_nb_channels, dst_nb_samples, AV_SAMPLE_FMT_S16, 1);
@@ -264,9 +273,20 @@ bool SpeechToText::process(frame_container &frames)
 
             //do jaro similarity test to the sentence
             double score = mDetail->jaro_distance(sentence, "hello blue box my name is ");
-            
-
-            if((0.5 < score)  && (score< 0.9) && (tBufferSize>props.BufferSize))
+            LOG_INFO << "score of this sentence is " << score;
+            if(score>maxScoreForCurrentStream){
+                maxScoreForCurrentStream = score;
+                scoreIncreasing = true;
+            }else if(score<maxScoreForCurrentStream){
+                scoreIncreasing = false;
+            }else{
+                numberOfFramesScoreSame+=1;
+            }
+            if(numberOfFramesScoreSame==3){
+                scoreIncreasing=false;
+                numberOfFramesScoreSame =0;
+            }
+            if((0.3 < score) && (score< 0.8) && (tBufferSize>props.BufferSize))
             {
                 //it means not a prefect match
                 //logging the start and end non space character's start time
@@ -278,29 +298,28 @@ bool SpeechToText::process(frame_container &frames)
                         if(count == 1)
                         {
                             tStart = InterTrans->tokens[i].start_time; //if it is the first time log it in tStart
-                            LOG_INFO << "first token is " << InterTrans->tokens[i].text;
                         }
                         else
                         {
                             tEnd = InterTrans->tokens[i].start_time; // rest of the other times log it in tEnd
-                            LOG_INFO << "last token is " << InterTrans->tokens[i].text;
                         }
                     }
                 }
                 //update fVector for these timings
-
-                memcpy(&fVector[0], (uint16_t*)((uint8_t*)&fVector[0]+(size_t)(2*tStart*props.src_rate)), 2*(fVector.size()- tStart*props.src_rate));
-                fVector.resize(2*(fVector.size()- 2*tStart*props.src_rate));
-
+                memcpy(&fVector[0], (uint16_t*)((uint8_t*)&fVector[0]+(size_t)(2*tStart*props.src_rate)), 2*(fVector.size()-(tStart*props.src_rate)));
+                fVector.resize(fVector.size()-(tStart*props.src_rate));
+                
+                if(!scoreIncreasing || score==0){
+                    fVector.erase(fVector.begin(),fVector.begin()+src_nb_samples);
+                }
                 //reset tBufferSize to 0
+                
                 tBufferSize =0;
                 DS_FreeStream(sCtx);
-                LOG_INFO << "tBufferSize is set to 0";
-                LOG_INFO << "score" << score;
                 //reset count =0
                 count =0;
             }
-            else if(score >= 0.9)
+            else if(score >= 0.8)
             {
                 //log times and send frames to next module.
                 //Also reset the tBufferSize and reset Stream
@@ -326,7 +345,6 @@ bool SpeechToText::process(frame_container &frames)
                 fState = true;
                 DS_FreeMetadata(partialMetadata);
                 DS_FreeStream(sCtx);
-                LOG_INFO << "freeing stream";
                 tBufferSize =0;
                 count =0;       
             }
@@ -345,13 +363,13 @@ bool SpeechToText::process(frame_container &frames)
                     tBufferSize =0;
                     count =0;
                     LOG_INFO << "sending out frames now";
-                    LOG_INFO << "time of frame sent out should be" << (float)(tEnd - tStart) ;
                     auto outFrame = makeFrame(2*(fVector.size()-(2*tStart*props.src_rate)));
-                    memcpy(outFrame->data(), (uint16_t*)((uint8_t*)&fVector[0]+(size_t)(2*tStart*props.src_rate)), 2*(fVector.size()-(2*tStart*props.src_rate)));
+                    memcpy(outFrame->data(), &fVector[0]+(size_t)(2*tStart*props.src_rate), 2*(fVector.size()-(2*tStart*props.src_rate)));
                     frames.insert(make_pair(mOutputPinId, outFrame));
                     send(frames);
                     fVector.clear();
                     //add frame to fVector after clearing the vector
+                    fVector.insert(fVector.end(), static_cast<uint16_t*>(frame->data()), static_cast<uint16_t*>(frame->data() + frame->size() ));
                     fState = false;
                 }
         }
@@ -360,13 +378,11 @@ bool SpeechToText::process(frame_container &frames)
     return true;
 }       
 
-    sentence ="";
-    return true;
-}     
 bool SpeechToText::init()
 {
     return Module::init();
 }
+
 bool SpeechToText::term()
 {            
     return Module::term();

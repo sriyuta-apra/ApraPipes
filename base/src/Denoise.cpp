@@ -44,7 +44,7 @@ bool Denoise::validateInputOutputPins() //validateINputoutput
 {
 	if (getNumberOfOutputPins() != 2)
 	{
-		LOG_ERROR << "<" << getId() << ">::validateOutputPins size is expected to be 1. Actual<" << getNumberOfOutputPins() << ">";
+		LOG_ERROR << "<" << getId() << ">::validateOutputPins size is expected to be 2. Actual<" << getNumberOfOutputPins() << ">";
 		return false;
 	}
 	return true;
@@ -76,18 +76,13 @@ void Denoise::addInputPin(framemetadata_sp &metadata, string &pinId)
 
 bool Denoise::process(frame_container &frames)
 {
-
 	//take all incomming input frames and beak into 480 chunks
 	auto frame = frames.cbegin()->second;
-	if (isFrameEmpty(frame))
-	{
-		return true;
-	}
-
 	auto extraSampleSize = (mPrevSampleSize + frame->size()) % (480 * sizeof(int16_t));
 	auto a = frame->size();
 	auto outSize = (mPrevSampleSize + frame->size()) - (extraSampleSize);
 	auto outFrame = makeFrame(outSize);
+	// LOG_INFO << frame->size();
 	int chunks = (mPrevSampleSize + frame->size()) / CHUNK_SIZE;
 
 	if (mPrevSampleSize != 0)
@@ -129,20 +124,9 @@ bool Denoise::process(frame_container &frames)
 	// COPY extra samples
 	memcpy(mTempAudio->data(), frame->data() + (frame->size() - extraSampleSize), extraSampleSize);
 	mPrevSampleSize = extraSampleSize;
-	//frames.insert(make_pair(mOutputPinId, outFrame)); //send denoised frame
-	//frames.insert(make_pair(mOutputPinId1, frame));	  //send normal frame
-
-	//send 5 sec chunk
-	memcpy(fiveSecFrame->data() + counter * outFrame->size(), outFrame->data(), outFrame->size());
-	counter = counter + 1;
-	// LOG_INFO << counter;
-	if (counter == check)
-	{
-		// LOG_INFO << "I AM SENDING A CHUNK OF FRAME";
-		frames.insert(make_pair(mOutputPinId, fiveSecFrame));
-		send(frames);
-		check = check + 50;
-	}
+	frames.insert(make_pair(mOutputPinId, outFrame)); //send denoised frame
+	frames.insert(make_pair(mOutputPinId1, frame));	  //send normal frame
+	send(frames);
 
 	return true;
 }
@@ -156,11 +140,10 @@ void Denoise::setMetadata(framemetadata_sp &metadata)
 
 bool Denoise::init()
 {
-	auto ret = Module::init();
 	mTempAudio = makeFrame(480 * 2);
 	auto size = sizeof(float) * 2400000;
 	fiveSecFrame = makeFrame(size);
-	return ret;
+	return Module::init();
 }
 
 bool Denoise::term()
