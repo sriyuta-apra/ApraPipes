@@ -28,8 +28,9 @@ public:
 
 		std::vector<std::string> availableDevices = sf::SoundRecorder::getAvailableDevices();
 		auto success = recorder.setDevice(availableDevices[props.device]);
-
-		LOG_ERROR << "recorder set device: " << success;
+		// auto intervalTime =sf::seconds(0.1f);
+		// recorder.setProcessingInterval(intervalTime);
+		LOG_INFO << "recorder set device: " << success;
 		recorder.start(props.sampleRate);
 		LOG_INFO << props.sampleRate ;
 		return true;
@@ -69,8 +70,8 @@ private:
 
 SoundRecord::SoundRecord(SoundRecordProps _props) : Module(SOURCE, "SoundRecord", _props)
 {
-	mDetail.reset(new Detail(_props, [&](const sf::Int16 *samples, std::size_t sampleCount) -> bool
-							 {
+	mDetail.reset(new Detail(_props, [&, _props](const sf::Int16 *samples, std::size_t sampleCount) -> bool
+							 {	
 								 auto outFrame = makeFrame(sampleCount*_props.byteDepth);
 								 frame_container frames;
 								 memcpy(outFrame->data(), samples, outFrame->size());
