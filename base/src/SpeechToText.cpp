@@ -236,9 +236,11 @@ bool SpeechToText::process(frame_container &frames)
                 {
                     // src_data will be fVector + current frame
                     fVector.insert(fVector.end(), static_cast<uint16_t*>(frame->data()), static_cast<uint16_t*>(frame->data() + frame->size() ));
-                    src_data =  (const uint8_t*)&fVector[0];
+                    auto src_frame = makeFrame(2*fVector.size());
+                    src_data = (uint8_t*)src_frame->data();
+                    memcpy(src_data, fVector.data(), (size_t)2*fVector.size()); 
                     src_nb_samples = fVector.size();
-                    tBufferSize+=fVector.size();
+                    tBufferSize+=frame->size();
                 }
 
             }
@@ -274,7 +276,14 @@ bool SpeechToText::process(frame_container &frames)
             //do jaro similarity test to the sentence
             double score = mDetail->jaro_distance(sentence, "hello blue box my name is ");
             LOG_INFO << "score of this sentence is " << score;
-            if(score>maxScoreForCurrentStream){
+
+            if(score==0)
+            {
+                fVector.erase(fVector.end()-src_nb_samples,fVector.end());
+                LOG_INFO<<"removing samples with score 0 from fVector"<<src_nb_samples;
+                return true;
+            }
+            else if(score>maxScoreForCurrentStream){
                 maxScoreForCurrentStream = score;
                 scoreIncreasing = true;
             }else if(score<maxScoreForCurrentStream){
@@ -286,7 +295,7 @@ bool SpeechToText::process(frame_container &frames)
                 scoreIncreasing=false;
                 numberOfFramesScoreSame =0;
             }
-            if((0.3 < score) && (score< 0.8) && (tBufferSize>props.BufferSize))
+            if((0.5 < score) && (score< 0.8) && (tBufferSize>props.BufferSize))
             {
                 //it means not a prefect match
                 //logging the start and end non space character's start time
@@ -306,10 +315,9 @@ bool SpeechToText::process(frame_container &frames)
                     }
                 }
                 //update fVector for these timings
-                memcpy(&fVector[0], (uint16_t*)((uint8_t*)&fVector[0]+(size_t)(2*tStart*props.src_rate)), 2*(fVector.size()-(tStart*props.src_rate)));
-                fVector.resize(fVector.size()-(tStart*props.src_rate));
-                
-                if(!scoreIncreasing || score==0){
+                memcpy(fVector.data(), (fVector.data()+(size_t)tStart*props.src_rate), 2*(fVector.size()-(tStart*props.src_rate)));
+                fVector.resize(2*(fVector.size()-(tStart*props.src_rate)));
+                if(!scoreIncreasing){
                     fVector.erase(fVector.begin(),fVector.begin()+src_nb_samples);
                 }
                 //reset tBufferSize to 0
