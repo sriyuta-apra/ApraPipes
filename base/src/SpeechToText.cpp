@@ -197,7 +197,7 @@ void SpeechToText::addInputPin(framemetadata_sp &metadata, string &pinId)
 //process
 bool SpeechToText::process(frame_container &frames)
 {
-    const uint8_t* src_data;
+    uint8_t* src_data;
     int src_nb_samples;
     auto frame = frames.cbegin()->second;
     float tStart=0.0, tEnd =0.0;
@@ -228,7 +228,7 @@ bool SpeechToText::process(frame_container &frames)
                 {
                     //src_data will be the current frame
                     fVector.insert(fVector.end(), static_cast<uint16_t*>(frame->data()), static_cast<uint16_t*>(frame->data() + frame->size() ));
-                    src_data =  (const uint8_t*)frame->data();
+                    src_data =  (uint8_t*)frame->data();
                     src_nb_samples = frame->size() / (2*av_get_channel_layout_nb_channels(props.src_ch_layout));
                     tBufferSize+=frame->size();
                 }
@@ -247,7 +247,7 @@ bool SpeechToText::process(frame_container &frames)
             else
             {
                 fVector.insert(fVector.end(), static_cast<uint16_t*>(frame->data()), static_cast<uint16_t*>(frame->data() + frame->size() ));
-                src_data =  (const uint8_t*)frame->data();
+                src_data =  (uint8_t*)frame->data();
                 src_nb_samples = frame->size() / (2*av_get_channel_layout_nb_channels(props.src_ch_layout));
                 tBufferSize+=frame->size();
             }
@@ -257,7 +257,7 @@ bool SpeechToText::process(frame_container &frames)
             int dst_nb_channels = av_get_channel_layout_nb_channels(AV_CH_LAYOUT_MONO);
             int dst_nb_samples = av_rescale_rnd(swr_get_delay(swr, props.src_rate) + src_nb_samples, 16000, props.src_rate, AV_ROUND_UP);
             av_samples_alloc(&dst_data, &dst_linesize, dst_nb_channels, dst_nb_samples, AV_SAMPLE_FMT_S16, 1);
-            int ret = swr_convert(swr, &dst_data, dst_nb_samples, &src_data, src_nb_samples);
+            int ret = swr_convert(swr, &dst_data, dst_nb_samples, (const uint8_t**)&src_data, src_nb_samples);
             int dst_bufsize = av_samples_get_buffer_size(&dst_linesize, dst_nb_channels,ret, AV_SAMPLE_FMT_S16, 1);
 
             //feed the audio to the stream
