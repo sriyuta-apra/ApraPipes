@@ -138,6 +138,10 @@ SET(CORE_FILES
 	src/SoundRecord.cpp
 	src/Denoise.cpp
 	src/SpeechToText.cpp
+	src/OpencvWebcam.cpp
+	src/textOverlay.cpp
+	src/virtualPTZ.cpp
+	src/imageOverlay.cpp
 )
 
 SET(include/CORE_FILES_H
@@ -183,6 +187,10 @@ SET(include/CORE_FILES_H
 	include/SoundRecord.h
 	include/Denoise.h
 	include/SpeechToText.h
+	include/OpencvWebcam.h
+	include/textOverlay.h
+	include/virtualPTZ.h
+	include/imageOverlay.h
 )
 
 IF(ENABLE_WINDOWS)
@@ -429,9 +437,10 @@ SET(UT_FILES
 	test/QRReader_tests.cpp
 	test/rotatecv_tests.cpp
 	test/SpeechToText_test.cpp
+	test/ApraPipes_ut.cpp
 	${ARM64_UT_FILES}
-	${CUDA_UT_FILES}	
-)
+	${CUDA_UT_FILES}
+)	
 
 add_executable(aprapipesut ${UT_FILES})
 
